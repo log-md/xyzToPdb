@@ -2,7 +2,7 @@
 Convert `.xyz` to `.pdb` (guess residues). 
 
 **Problem:**
-  Someone `file.pdb` convert to `file.xyz` and only gives you `file.xyz` with no residue information => we can't plot it. 
+  Someone converted `file.pdb` to `file.xyz` but only gave you `file.xyz` which has no residue information => can't visualize the protein(s) in `file.xyz`. 
 
 **Solution:** `pip install xyzToPdb; xyzToPdb file.xyz # outputs file.pdb`
 
