@@ -9,4 +9,4 @@ Convert `.xyz` to `.pdb` (guess residues).
 Inspired by [this stackexchange post](https://mattermodeling.stackexchange.com/questions/9844/is-it-possible-to-recover-the-protein-structure-after-conversions-pdb-xyz-pdb).
 
 ## How? 
-Runs a Transformer trained with the loss `cross_entropy(Transformer(file.xyz) - file.pdb)`. Wandb log here ~x% `residue_acc` and ~y% `ca_cb_acc`. 
+Runs a Transformer trained with the loss `cross_entropy(Transformer(file.xyz) - file.pdb)` on 80% of PDB anno 2024. The model got ~x% `residue_acc` and ~y% `ca_cb_acc` on the 20% validation set. 
