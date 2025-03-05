@@ -108,7 +108,7 @@ def main():
         amino_acid_probs, atom_name_probs = model(atom_types, atom_positions)
         _, predicted = torch.max(amino_acid_probs[0], dim=1)
         
-        num_to_aas = list(get_amino_acid_mapping().keys()) + ['UNK']  # index 21 is not-amino-acid
+        num_to_aas = list(get_amino_acid_mapping().keys()) + ['DUM']  # index 21 is not-amino-acid
         aas = [num_to_aas[i] for i in predicted]
         
         _, predicted_atom_names = torch.max(atom_name_probs[0], dim=1)
@@ -187,12 +187,14 @@ def main():
                 raw_atoms.arrays['residuenumbers'][o_idx] = water_count
                 water_count += 1
 
-    # Reassign residue numbers sequentially before writing
-    current_id = 1
-    for i in range(len(raw_atoms)):
-        res_name = raw_atoms.arrays['residuenames'][i]
-        if res_name != 'DUM' and res_name != 'HOH':
-            raw_atoms.arrays['residuenumbers'][i] = current_id
+    # Get only the amino acid residue names (excluding non-amino acids like 'DUM' and 'HOH')
+    last = None 
+    count = 0
+    for i, aa in enumerate(raw_atoms.arrays['residuenames']):
+        if aa != last: 
+            count += 1
+        last = aa 
+        raw_atoms.arrays['residuenumbers'][i] = count
 
     write(output_file, raw_atoms, format='proteindatabank')
     print(f"wrote to {output_file}")
