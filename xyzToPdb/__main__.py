@@ -104,6 +104,7 @@ def main():
     
     # Run inference
     with torch.no_grad():
+        print(atom_types.shape, atom_positions.shape)
         amino_acid_probs, atom_name_probs = model(atom_types, atom_positions)
         _, predicted = torch.max(amino_acid_probs[0], dim=1)
         
@@ -148,7 +149,7 @@ def main():
     atoms.arrays['residuenumbers'] = atom_residue_ids
 
     # write protein with residue information 
-    write(output_file_only_protein, raw_atoms, format='proteindatabank')
+    write(output_file_only_protein, atoms, format='proteindatabank')
     
     # Map information from atoms to raw_atoms using non_water_and_h_indices
     raw_atoms.arrays['atomtypes'] = list(raw_atoms.symbols)
@@ -185,6 +186,13 @@ def main():
                 raw_atoms.arrays['residuenames'][o_idx] = 'HOH'
                 raw_atoms.arrays['residuenumbers'][o_idx] = water_count
                 water_count += 1
+
+    # Reassign residue numbers sequentially before writing
+    current_id = 1
+    for i in range(len(raw_atoms)):
+        res_name = raw_atoms.arrays['residuenames'][i]
+        if res_name != 'DUM' and res_name != 'HOH':
+            raw_atoms.arrays['residuenumbers'][i] = current_id
 
     write(output_file, raw_atoms, format='proteindatabank')
     print(f"wrote to {output_file}")
