@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "xyzToPdb"
+version = "0.1.0"
+description = "xyztopdb file.xyz"
+readme = "README.md"
+requires-python = ">=3.8"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Operating System :: OS Independent",
+]
+license = { text = "MIT" }
+dependencies = [
+    "torch",
+    "numpy",
+    "scipy",
+    "ase",
+]
+
+[project.scripts]
+xyztopdb = "xyzToPdb.__main__:main"
+
+[project.urls]
+Homepage = "https://github.com/log-md/xyzToPdb"
+
+[tool.setuptools]
+packages = ["xyzToPdb"]
