@@ -17,7 +17,39 @@ from xyzToPdb.model import (
     num_heads
 )
 
+def download_model(model_path):
+    print(f"Model not found at {model_path}, downloading...")
+    try:
+        model_url = "https://logmd.b-cdn.net/model.pth"
+        
+        # Remove existing model file if it exists
+        if os.path.exists(model_path):
+            os.remove(model_path)
+            
+        # Create a custom reporthook to show download progress
+        def reporthook(count, block_size, total_size):
+            global start_time
+            if count == 0:
+                start_time = time.time()
+                return
+            duration = time.time() - start_time
+            progress_size = int(count * block_size)
+            speed = int(progress_size / (1024 * duration)) if duration > 0 else 0
+            percent = min(int(count * block_size * 100 / total_size), 100)
+            sys.stdout.write(f"\r...{percent}% - {progress_size / (1024 * 1024):.1f} MB "
+                            f"of {total_size / (1024 * 1024):.1f} MB "
+                            f"({speed} KB/s)")
+            sys.stdout.flush()
+            
+        urllib.request.urlretrieve(model_url, model_path, reporthook)
+        print(f"\nModel downloaded successfully to {model_path}")
+    except Exception as e:
+        print(f"Error downloading model: {e}")
+        sys.exit(1)
+
 def main():
+    print("Assuming amino acids appear sequentially (including their hydrogens if they exist).")
+    print("Assuming water molecules are in the end. ")
     # Check if input file is provided
     if len(sys.argv) < 2:
         print("Usage: xyztopdb file.xyz")
@@ -37,30 +69,17 @@ def main():
     # Load model
     model_path = os.path.join(os.path.dirname(__file__), "model.pth")
     if not os.path.exists(model_path):
-        print(f"Model not found at {model_path}, downloading...")
-        try:
-            model_url = "https://logmd.b-cdn.net/model.pth"
-            
-            # Create a custom reporthook to show download progress
-            def reporthook(count, block_size, total_size):
-                global start_time
-                if count == 0:
-                    start_time = time.time()
-                    return
-                duration = time.time() - start_time
-                progress_size = int(count * block_size)
-                speed = int(progress_size / (1024 * duration)) if duration > 0 else 0
-                percent = min(int(count * block_size * 100 / total_size), 100)
-                sys.stdout.write(f"\r...{percent}% - {progress_size / (1024 * 1024):.1f} MB "
-                                f"of {total_size / (1024 * 1024):.1f} MB "
-                                f"({speed} KB/s)")
-                sys.stdout.flush()
-                
-            urllib.request.urlretrieve(model_url, model_path, reporthook)
-            print(f"\nModel downloaded successfully to {model_path}")
-        except Exception as e:
-            print(f"Error downloading model: {e}")
-            sys.exit(1)
+        download_model(model_path)
+    else: 
+        import hashlib; 
+        model_hash = hashlib.sha256(open(model_path, "rb").read()).hexdigest()
+        real_hash = '6b92245812e171207f9abbca11da429ec448e2a36a158450e39ef9ab413904f0'
+        if model_hash != real_hash:
+            print(f"Model hash: {model_hash}")
+            print(f"Should be:  {real_hash}")
+            print("Likely just new model, downloading...")
+            download_model(model_path)
+        
         
     model = SimpleAtomTransformer(
         input_dim=input_dim, 
@@ -105,45 +124,21 @@ def main():
     # Run inference
     with torch.no_grad():
         print(atom_types.shape, atom_positions.shape)
-        amino_acid_probs, atom_name_probs = model(atom_types, atom_positions)
+        amino_acid_probs, atom_name_probs, atom_change_probs = model(atom_types, atom_positions)
         _, predicted = torch.max(amino_acid_probs[0], dim=1)
         
         num_to_aas = list(get_amino_acid_mapping().keys()) + ['DUM']  # index 21 is not-amino-acid
-        aas = [num_to_aas[i] for i in predicted]
+        atom_residue_names = np.array([num_to_aas[i] for i in predicted])
         
         _, predicted_atom_names = torch.max(atom_name_probs[0], dim=1)
         num_to_atom_names = list(get_atom_name_mapping().keys()) + ['X']
-        atom_names = [num_to_atom_names[i] for i in predicted_atom_names]
-    
-    # Improved residue assignment logic
-    residue_names = []
-    residue_ids = []
-    current_residue = 1
-    
-    # Group consecutive identical amino acids into the same residue
-    for i in range(len(aas)):
-        if i > 0 and aas[i] != aas[i-1]:
-            current_residue += 1
-        residue_names.append(aas[i])
-        residue_ids.append(current_residue)
-    
-    # Map these residue assignments to atoms
-    atom_residue_names = []
-    atom_residue_ids = []
-    for i in range(len(atoms)):
-        if i < len(residue_names):
-            atom_residue_names.append(residue_names[i])
-            atom_residue_ids.append(residue_ids[i])
-        else:
-            # Handle case where there are more atoms than predictions
-            atom_residue_names.append('X')
-            atom_residue_ids.append(-1)
-    
-    # Set default names for any unnamed atoms
-    for i in range(len(atom_names)):
-        if i >= len(atom_names) or atom_names[i] == '' or atom_names[i] == 'X':
-            atom_names[i] = atoms.symbols[i]
-    
+        atom_names = np.array([num_to_atom_names[i] for i in predicted_atom_names])
+
+        # changes = np.concatenate(([1], np.diff(residue_numbers) != 0)).astype(int)
+        predicted_atom_changes = (atom_change_probs[0] > 0.5).numpy()
+        atom_residue_ids = np.cumsum(predicted_atom_changes)
+
+    print(atom_names, atom_residue_names, atom_residue_ids)
     atoms.arrays['atomtypes'] = atom_names
     atoms.arrays['residuenames'] = atom_residue_names
     atoms.arrays['residuenumbers'] = atom_residue_ids
@@ -151,7 +146,8 @@ def main():
     # write protein with residue information 
     write(output_file_only_protein, atoms, format='proteindatabank')
     
-    # Map information from atoms to raw_atoms using non_water_and_h_indices
+    # Add back hydrogen and water. 
+    # We do this by taking raw_atoms with hydrogen/water and re-annotating with `atoms` residue info.
     raw_atoms.arrays['atomtypes'] = list(raw_atoms.symbols)
     raw_atoms.arrays['residuenames'] = ['DUM'] * len(raw_atoms)
     raw_atoms.arrays['residuenumbers'] = [-1] * len(raw_atoms)
@@ -161,18 +157,33 @@ def main():
         raw_atoms.arrays['residuenames'][idx] = atom_residue_names[i]
         raw_atoms.arrays['residuenumbers'][idx] = atom_residue_ids[i]
 
-    # assign each hydrogen to nearest residue
+    # Add hydrogens to closest by residue. 
     h_atoms = raw_atoms.positions[h_indices, None, :] 
     distances = atoms.positions[None, :, :] - h_atoms
     nearest_atom_indices = np.argmin(np.linalg.norm(distances, axis=2), axis=1)
-
-    from tqdm import tqdm
     for i, h_idx in enumerate(h_indices):
         if np.min(distances[i]) <= 1.2:
             raw_atoms.arrays['residuenames'][h_idx] = atom_residue_names[nearest_atom_indices[i]]
             raw_atoms.arrays['residuenumbers'][h_idx] = atom_residue_ids[nearest_atom_indices[i]]
 
-    water_count = 1
+    # Fix hydrogen residue numbers to maintain increasing order
+    for h_idx in h_indices:
+        current_residue_num = raw_atoms.arrays['residuenumbers'][h_idx] 
+        neighbour_before = [a for a in range(h_idx-3, h_idx) if a >= 1]
+        neighbour_after  = [a for a in range(h_idx+1, h_idx+4) if a < len(raw_atoms)]
+
+        neighbour_before_nums = np.array([raw_atoms.arrays['residuenumbers'][a] for a in neighbour_before ])
+        neighbour_after_nums = np.array([raw_atoms.arrays['residuenumbers'][a] for a in neighbour_after ])
+
+        if neighbour_after_nums.size == 0 or neighbour_before_nums.size == 0: continue 
+
+        if neighbour_before_nums.min() == neighbour_after_nums.min(): 
+            raw_atoms.arrays['residuenumbers'][h_idx] = neighbour_before_nums.min()
+            raw_atoms.arrays['residuenames'][h_idx] = raw_atoms.arrays['residuenames'][neighbour_after[np.argmin(neighbour_after_nums)]]
+
+
+    # Fix water count. 
+    water_count = 1 + max(raw_atoms.arrays['residuenumbers'])
     o_indices = np.where(np.array(raw_atoms.symbols) == 'O')[0]
     for o_idx in o_indices:
         if raw_atoms.arrays['residuenames'][o_idx] == 'DUM':
@@ -186,15 +197,6 @@ def main():
                 raw_atoms.arrays['residuenames'][o_idx] = 'HOH'
                 raw_atoms.arrays['residuenumbers'][o_idx] = water_count
                 water_count += 1
-
-    # Get only the amino acid residue names (excluding non-amino acids like 'DUM' and 'HOH')
-    last = None 
-    count = 0
-    for i, aa in enumerate(raw_atoms.arrays['residuenames']):
-        if aa != last: 
-            count += 1
-        last = aa 
-        raw_atoms.arrays['residuenumbers'][i] = count
 
     write(output_file, raw_atoms, format='proteindatabank')
     print(f"wrote to {output_file}")
