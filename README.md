@@ -11,4 +11,4 @@ Inspired by [this stackexchange post](https://mattermodeling.stackexchange.com/q
 ## How? 
 Runs a Transformer trained with the loss `cross_entropy(Transformer(file.xyz) - file.pdb)` on 80% of PDB anno 2024. The model got ~99% `residue_acc` and ~99% `ca_cb_acc` on the 20% validation set. 
 
-![image](https://github.com/user-attachments/assets/4967b905-8e3d-4453-b929-bb032abf1d36)
+![Uploading image.png…]()
