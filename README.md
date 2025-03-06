@@ -1,3 +1,5 @@
+![1741281319473](https://github.com/user-attachments/assets/0f41900c-d51c-4c68-9630-1f8d710b8b5d) 
+
 # xyzToPdb
 Convert `.xyz` to `.pdb` by guessing the lacking residues. 
 
@@ -39,3 +41,4 @@ Inspired by [this stackexchange post](https://mattermodeling.stackexchange.com/q
 Used 80% of PDB anno 2024. Model got ~99% `residue_acc` and ~99% `ca_cb_acc` on the 20% validation set. 
 
 ![image](https://github.com/user-attachments/assets/dbc2a6f9-09e0-4faa-a331-c6cb7d5e9c91)
+
